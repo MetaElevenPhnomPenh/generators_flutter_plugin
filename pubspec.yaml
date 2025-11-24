@@ -5,15 +5,14 @@ homepage:
 publish_to: none
 
 environment:
-  sdk: '>=3.1.5 <4.0.0'
-  flutter: ">=1.17.0"
+  sdk: ^3.10.0
 
 dependencies:
   flutter:
     sdk: flutter
 
-  build:
-  source_gen:
+  build: ^4.0.3
+  source_gen: ^4.1.1
 
   # Our annotation
   annotations:
@@ -24,8 +23,8 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
 
-  build_runner:
-  
+  build_runner: ^2.10.4
+  analyzer: ^7.7.1
   flutter_lints: ^2.0.0
 
 # For information on the generic Dart part of this file, see the

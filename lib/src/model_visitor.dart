@@ -1,48 +1,43 @@
-import 'package:analyzer/dart/element/element.dart';
-import 'package:analyzer/dart/element/visitor.dart';
-import 'package:analyzer/dart/element/type.dart';
-import 'package:analyzer/dart/constant/value.dart';
-
+import 'package:analyzer/dart/ast/ast.dart';
+import 'package:analyzer/dart/ast/visitor.dart';
 
 class FieldData {
-  final DartType type;
   final String typeString;
-  final List<DartObject?> metaDrtObject;
+  final List<String> metadata;
 
   const FieldData({
-    required this.type,
     required this.typeString,
-    required this.metaDrtObject,
+    required this.metadata,
   });
 }
 
-// Step 1
-class ModelVisitor extends SimpleElementVisitor<void> {
-// Step 2
+class ModelVisitor extends RecursiveAstVisitor<void> {
   String className = '';
   Map<String, FieldData> fields = {};
 
-// Step 3
   @override
-  void visitConstructorElement(ConstructorElement element) {
-    final String returnType = element.returnType.toString();
-    className = returnType.replaceAll("*", ""); // ClassName* -> ClassName
+  void visitClassDeclaration(ClassDeclaration node) {
+    className = node.name.lexeme;
+    super.visitClassDeclaration(node);
   }
 
-// Step 4
   @override
-  void visitFieldElement(FieldElement element) {
-    /*
-    {
-      name: String,
-      price: double
+  void visitFieldDeclaration(FieldDeclaration node) {
+    for (var variable in node.fields.variables) {
+      final name = variable.name.lexeme;
+
+      final type = node.fields.type?.toSource() ?? 'dynamic';
+
+      final metadata = node.metadata
+          .map((m) => m.toSource())
+          .toList();
+
+      fields[name] = FieldData(
+        typeString: type,
+        metadata: metadata,
+      );
     }
-     */
-    String elementType = element.type.toString().replaceAll("*", "");
-    List<DartObject?> metaDrtObject = [];
-    for (var v in element.metadata) {
-      metaDrtObject.add(v.computeConstantValue());
-    }
-    fields[element.name] = FieldData(type: element.type, typeString: elementType, metaDrtObject: metaDrtObject);
+
+    super.visitFieldDeclaration(node);
   }
 }
