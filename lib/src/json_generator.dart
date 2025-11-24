@@ -101,7 +101,7 @@ class JsonGenerator extends GeneratorForAnnotation<JsonAnnotation> {
     buffer.writeln('$className copyWith({');
     for (var entry in fields.entries) {
       final type = entry.value.typeString;
-      buffer.writeln('$type ${entry.key},');
+      buffer.writeln('$type? ${entry.key},');
     }
     buffer.writeln('}) {');
     buffer.writeln('return $className(');
