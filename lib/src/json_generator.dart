@@ -1,42 +1,55 @@
 import 'package:analyzer/dart/element/element.dart';
 import 'package:annotations/annotations.dart';
 import 'package:build/build.dart';
-import 'package:build/src/builder/build_step.dart';
-import 'package:generators/src/model_visitor.dart';
 import 'package:source_gen/source_gen.dart';
-import 'package:analyzer/dart/element/type.dart';
-import 'package:analyzer/dart/constant/value.dart';
+
+import 'model_visitor.dart';
 
 class JsonGenerator extends GeneratorForAnnotation<JsonAnnotation> {
   @override
   String generateForAnnotatedElement(
-    Element element,
-    ConstantReader annotation,
-    BuildStep buildStep,
-  ) {
-    final ModelVisitor visitor = ModelVisitor();
-    // Visit class fields and constructor
-    element.visitChildren(visitor);
+      Element element,
+      ConstantReader annotation,
+      BuildStep buildStep,
+      ) {
+    if (element is! ClassElement) {
+      throw InvalidGenerationSourceError(
+        'JsonGenerator can only be used on classes.',
+        element: element,
+      );
+    }
 
-    // Buffer to write each part of generated class
+    final classElement = element;
+    final className = classElement.name;
+
+    // Collect fields
+    final fields = <String, FieldData>{};
+    for (var field in classElement.fields) {
+      if (field.isStatic) continue;
+
+      final typeStr = field.type.getDisplayString(withNullability: true);
+      final meta = field.metadata.annotations.map((e) => e.toSource()).toList();
+
+      fields[field.name!] = FieldData(typeString: typeStr, metadata: meta);
+    }
+
     final buffer = StringBuffer();
 
-    String generatedFromJSon = generateFromJsonMethod(visitor);
-    buffer.writeln(generatedFromJSon);
+    // Generate fromJson
+    buffer.writeln(generateFromJsonMethod(className!, fields));
 
-    String generatedToJSon = generateToJsonMethod(visitor);
-    buffer.writeln(generatedToJSon);
+    // Generate toJson
+    buffer.writeln(generateToJsonMethod(className, fields));
 
-    String generatedCopyWith = generateCopyWithMethod(visitor);
-    buffer.writeln(generatedCopyWith);
+    // Generate copyWith
+    buffer.writeln(generateCopyWithMethod(className, fields));
 
     return buffer.toString();
   }
 
   // Method to generate fromJSon method
-  String generateFromJsonMethod(ModelVisitor visitor) {
+  String generateFromJsonMethod(String className, Map<String, FieldData> fields) {
     // Class name from model visitor
-    String className = visitor.className;
 
     // Buffer to write each part of generated class
     final buffer = StringBuffer();
@@ -46,17 +59,17 @@ class JsonGenerator extends GeneratorForAnnotation<JsonAnnotation> {
     buffer.writeln('$className _\$${className}FromJson(Map<String, dynamic> json) => ');
     buffer.write('$className(');
 
-    for (int i = 0; i < visitor.fields.length; i++) {
-      final field = visitor.fields.values.elementAt(i);
-      String dataType = field.typeString.toString();
-      final bool isOptional = dataType.contains('?');
+    for (var entry in fields.entries) {
+      final name = entry.key;
+      String dataType = entry.value.typeString.replaceAll('?', '');
+      final bool isOptional = entry.value.typeString.contains('?');
       dataType = dataType.replaceAll("?", "");
-      bool isList = field.type.isDartCoreList;
+      bool isList = dataType.startsWith('List<');
       if (isList) {
         dataType = dataType.replaceAll("List<", "");
         dataType = dataType.replaceAll(">", "");
       }
-      String fieldName = camelCaseToSnakeCase(visitor.fields.keys.elementAt(i));
+      String fieldName = camelCaseToSnakeCase(name);
       String mapValue = "json['$fieldName']";
       if (isObject(dataType)) {
         String fromJson = '$dataType.fromJson($mapValue)';
@@ -80,7 +93,7 @@ class JsonGenerator extends GeneratorForAnnotation<JsonAnnotation> {
         }
       }*/
       buffer.writeln(
-        "${visitor.fields.keys.elementAt(i)}: $mapValue,",
+        "$name: $mapValue,",
       );
     }
     buffer.writeln(');');
@@ -125,10 +138,7 @@ class JsonGenerator extends GeneratorForAnnotation<JsonAnnotation> {
   }
 
   // Method to generate fromJSon method
-  String generateToJsonMethod(ModelVisitor visitor) {
-    // Class name from model visitor
-    String className = visitor.className;
-
+  String generateToJsonMethod(String className, Map<String, FieldData> fields) {
     // Buffer to write each part of generated class
     final buffer = StringBuffer();
 
@@ -136,17 +146,18 @@ class JsonGenerator extends GeneratorForAnnotation<JsonAnnotation> {
     buffer.writeln('// To Json Method');
     buffer.writeln('Map<String, dynamic> _\$${className}ToJson($className instance) => ');
     buffer.write('<String, dynamic>{');
-    for (int i = 0; i < visitor.fields.length; i++) {
-      final field = visitor.fields.values.elementAt(i);
-      String dataType = field.typeString.toString();
-      bool isList = field.type.isDartCoreList;
+    for (var entry in fields.entries) {
+      final name = entry.key;
+      String dataType = entry.value.typeString.replaceAll('?', '');
+      final bool isOptional = entry.value.typeString.contains('?');
+      dataType = dataType.replaceAll("?", "");
+      bool isList = dataType.startsWith('List<');
       if (isList) {
         dataType = dataType.replaceAll("List<", "");
         dataType = dataType.replaceAll(">", "");
       }
-      final bool isOptional = dataType.contains('?');
       dataType = dataType.replaceAll("?", "");
-      String fieldName = visitor.fields.keys.elementAt(i);
+      String fieldName = name;
       String jsonValue = "instance.$fieldName";
       if (isObject(dataType)) {
         if (isList) {
@@ -168,10 +179,7 @@ class JsonGenerator extends GeneratorForAnnotation<JsonAnnotation> {
   }
 
   // Method to generate fromJSon method
-  String generateCopyWithMethod(ModelVisitor visitor) {
-    // Class name from model visitor
-    String className = visitor.className;
-
+  String generateCopyWithMethod(String className, Map<String, FieldData> fields) {
     // Buffer to write each part of generated class
     final buffer = StringBuffer();
 
@@ -179,19 +187,23 @@ class JsonGenerator extends GeneratorForAnnotation<JsonAnnotation> {
     buffer.writeln("// Extension for a $className class to provide 'copyWith' method");
     buffer.writeln('extension \$${className}Extension on $className {');
     buffer.writeln('$className copyWith({');
-    for (int i = 0; i < visitor.fields.length; i++) {
-      final field = visitor.fields.values.elementAt(i);
-      String dataType = field.typeString.toString().replaceAll("?", "");
-      String fieldName = visitor.fields.keys.elementAt(i);
+    for (var entry in fields.entries) {
+      final name = entry.key;
+      String dataType = entry.value.typeString.replaceAll('?', '');
+      final bool isOptional = entry.value.typeString.contains('?');
+      dataType = dataType.replaceAll("?", "");
+      bool isList = dataType.startsWith('List<');
+      String fieldName = name;
       buffer.writeln(
         '$dataType? $fieldName,',
       );
     }
     buffer.writeln('}) {');
     buffer.writeln('return $className(');
-    for (int i = 0; i < visitor.fields.length; i++) {
+    for (var entry in fields.entries) {
+      final name = entry.key;
       buffer.writeln(
-        "${visitor.fields.keys.elementAt(i)}: ${visitor.fields.keys.elementAt(i)} ?? this.${visitor.fields.keys.elementAt(i)},",
+        "$name: $name ?? this.$name,",
       );
     }
     buffer.writeln(');');
