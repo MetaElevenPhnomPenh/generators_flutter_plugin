@@ -125,14 +125,15 @@ class JsonGenerator extends GeneratorForAnnotation<JsonAnnotation> {
   }
 
   String camelCaseToSnakeCase(String input) {
-    String result = input.replaceAllMapped(RegExp(r'([A-Z])'), (Match match) {
+    String result = input;
+/*    result = result.replaceAllMapped(RegExp(r'([A-Z])'), (Match match) {
       return '_' + match.group(0)!.toLowerCase();
     });
 
     // Remove leading underscore if present
     if (result.startsWith('_')) {
       result = result.substring(1);
-    }
+    }*/
 
     return result;
   }
